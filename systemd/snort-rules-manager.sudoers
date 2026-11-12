@@ -1,0 +1,1 @@
+snort-rules ALL=(root) NOPASSWD: /usr/sbin/snort -T -c /etc/snort/snort.conf, /usr/bin/systemctl restart snort

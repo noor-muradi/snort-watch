@@ -1,0 +1,36 @@
+[Unit]
+Description=Snort Watch local rule manager
+After=network.target snort.service
+
+[Service]
+Type=simple
+User=snort-rules
+Group=snort
+WorkingDirectory=/opt/snort-watch
+Environment=RULES_API_HOST=127.0.0.1
+Environment=RULES_API_PORT=3101
+Environment=SNORT_MANAGED_RULES=/var/lib/snort-watch/ui-managed.rules
+Environment=SNORT_COMMUNITY_RULES=/var/lib/snort-watch/community-active.rules
+Environment=SNORT_COMMUNITY_DOWNLOAD=/var/lib/snort-watch/community-download.rules
+Environment=SNORT_COMMUNITY_STATE=/var/lib/snort-watch/community-state.json
+Environment=SNORT_COMMUNITY_LICENSE=/var/lib/snort-watch/community-license.txt
+Environment=SNORT_COMMUNITY_AUTHORS=/var/lib/snort-watch/community-authors.txt
+Environment=SNORT_CONFIG=/etc/snort/snort.conf
+Environment=SNORT_BIN=/usr/sbin/snort
+Environment=SNORT_SERVICE=snort
+ExecStart=/opt/snort-watch/bin/node /opt/snort-watch/server/rules-manager.mjs
+Restart=on-failure
+RestartSec=3s
+UMask=0027
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/snort-watch
+ReadWritePaths=/var/log/snort
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,51 @@
+services:
+  bridge:
+    build:
+      context: .
+    image: snort-watch:local
+    command: ["node", "server/snort-fast-bridge.mjs"]
+    environment:
+      SNORT_FAST_LOG: /snort-logs/snort.alert.fast
+      SNORT_JSON_LOG: /data/alerts.jsonl
+    volumes:
+      - type: bind
+        source: ${SNORT_LOG_DIR:-/var/log/snort}
+        target: /snort-logs
+        read_only: true
+      - alerts-data:/data
+    group_add:
+      - "${SNORT_LOG_GID:-4}"
+    read_only: true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+  dashboard:
+    image: snort-watch:local
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3100
+      SNORT_JSON_LOG: /data/alerts.jsonl
+    ports:
+      - "127.0.0.1:3100:3100"
+    volumes:
+      - alerts-data:/data:ro
+    read_only: true
+    cap_drop:
+      - ALL
+    depends_on:
+      - bridge
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3100/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  alerts-data:
