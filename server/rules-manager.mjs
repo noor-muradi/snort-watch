@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import {
   chmod,
+  mkdir,
   open,
   readFile,
   rename,
@@ -13,6 +14,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { SnortSupervisor } from "./snort-supervisor.mjs";
 
 const execFileAsync = promisify(execFile);
 const rulesPath = path.resolve(
@@ -24,6 +26,11 @@ const configPath = path.resolve(
 );
 const snortBinary = process.env.SNORT_BIN ?? "/usr/sbin/snort";
 const serviceName = process.env.SNORT_SERVICE ?? "snort";
+const containerController = process.env.SNORT_CONTROLLER_MODE === "container";
+const snortInterface = process.env.SNORT_INTERFACE;
+const snortHomeNet = process.env.SNORT_HOME_NET;
+const snortLogDirectory = process.env.SNORT_LOG_DIR ?? "/var/log/snort";
+const rulesApiSocket = process.env.RULES_API_SOCKET;
 const managedDirectory = path.dirname(rulesPath);
 const communityActivePath = path.resolve(
   process.env.SNORT_COMMUNITY_RULES ??
@@ -62,6 +69,7 @@ const communityArchiveHosts = new Set([
 ]);
 const allowedOrigins = new Set(
   (
+    process.env.RULES_API_ALLOWED_ORIGINS ??
     process.env.RULES_ALLOWED_ORIGINS ??
     "http://127.0.0.1:3100,http://localhost:3100,http://127.0.0.1:5173,http://localhost:5173"
   )
@@ -89,6 +97,12 @@ if (
 }
 if (!/^[a-zA-Z0-9_.@-]+$/.test(serviceName)) {
   throw new Error("SNORT_SERVICE must be a systemd unit name.");
+}
+if (rulesApiSocket && !path.isAbsolute(rulesApiSocket)) {
+  throw new Error("RULES_API_SOCKET must be an absolute path.");
+}
+if (containerController && (!snortInterface || !snortHomeNet)) {
+  throw new Error("SNORT_INTERFACE and SNORT_HOME_NET are required in container mode.");
 }
 
 export function validateRuleContent(content) {
@@ -444,6 +458,43 @@ async function runPrivileged(command, args) {
   }
 }
 
+async function validateSnortConfig() {
+  if (!containerController) {
+    return runPrivileged(snortBinary, ["-T", "-c", configPath]);
+  }
+  try {
+    const result = await execFileAsync(
+      snortBinary,
+      ["-T", "-c", configPath, "-h", snortHomeNet],
+      { timeout: 60_000, maxBuffer: 1024 * 1024 },
+    );
+    return {
+      ok: true,
+      output: `${result.stdout ?? ""}${result.stderr ?? ""}`.trim(),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      output: `${error.stdout ?? ""}${error.stderr ?? ""}`.trim(),
+      message: error.message,
+    };
+  }
+}
+
+let sensorSupervisor = null;
+
+async function restartSnort() {
+  if (!containerController) {
+    return runPrivileged("/usr/bin/systemctl", ["restart", serviceName]);
+  }
+
+  try {
+    return await sensorSupervisor.restart();
+  } catch (error) {
+    return { ok: false, output: error.message, message: error.message };
+  }
+}
+
 async function getRules() {
   const [content, fileStat] = await Promise.all([
     readFile(rulesPath, "utf8"),
@@ -547,11 +598,7 @@ async function updateRules(response, request, origin) {
     }
 
     await writeAtomically(newContent);
-    const validation = await runPrivileged(snortBinary, [
-      "-T",
-      "-c",
-      configPath,
-    ]);
+    const validation = await validateSnortConfig();
     if (!validation.ok) {
       await writeAtomically(current.content);
       sendJson(response, 422, {
@@ -561,16 +608,10 @@ async function updateRules(response, request, origin) {
       return;
     }
 
-    const restart = await runPrivileged("/usr/bin/systemctl", [
-      "restart",
-      serviceName,
-    ]);
+    const restart = await restartSnort();
     if (!restart.ok) {
       await writeAtomically(current.content);
-      const rollbackRestart = await runPrivileged("/usr/bin/systemctl", [
-        "restart",
-        serviceName,
-      ]);
+      const rollbackRestart = await restartSnort();
       sendJson(response, 503, {
         error: "Snort could not restart with the new rules. The previous rules were restored.",
         details: restart.output || restart.message,
@@ -701,11 +742,7 @@ async function updateCommunityRules(response, request, origin) {
     }
 
     const updatedStatus = await readCommunityStatus();
-    const validation = await runPrivileged(snortBinary, [
-      "-T",
-      "-c",
-      configPath,
-    ]);
+    const validation = await validateSnortConfig();
     if (!validation.ok) {
       await restoreFiles(snapshot);
       sendJson(response, 422, {
@@ -715,16 +752,10 @@ async function updateCommunityRules(response, request, origin) {
       return;
     }
 
-    const restart = await runPrivileged("/usr/bin/systemctl", [
-      "restart",
-      serviceName,
-    ]);
+    const restart = await restartSnort();
     if (!restart.ok) {
       await restoreFiles(snapshot);
-      const rollbackRestart = await runPrivileged("/usr/bin/systemctl", [
-        "restart",
-        serviceName,
-      ]);
+      const rollbackRestart = await restartSnort();
       sendJson(response, 503, {
         error: "Snort could not restart with the community rules. The previous files were restored.",
         details: restart.output || restart.message,
@@ -822,13 +853,47 @@ const server = createServer(async (request, response) => {
 });
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  server.listen(port, host, () => {
-    console.info(`Snort rule manager listening on http://${host}:${port}`);
-    console.info(`Managing alert rules in ${rulesPath}`);
-  });
+  if (containerController) {
+    sensorSupervisor = new SnortSupervisor({
+      command: snortBinary,
+      args: ["-i", snortInterface, "-c", configPath, "-l", snortLogDirectory, "-h", snortHomeNet],
+      onUnexpectedExit: (error) => {
+        console.error(error.message);
+        server.close(() => {
+          process.exitCode = 1;
+        });
+      },
+    });
+    await sensorSupervisor.start();
+  }
+
+  if (rulesApiSocket) {
+    await mkdir(path.dirname(rulesApiSocket), { recursive: true, mode: 0o770 });
+    await unlink(rulesApiSocket).catch((error) => {
+      if (error.code !== "ENOENT") throw error;
+    });
+    server.listen(rulesApiSocket, async () => {
+      try {
+        await chmod(rulesApiSocket, 0o666);
+        console.info(`Snort rule manager listening on ${rulesApiSocket}`);
+        console.info(`Managing alert rules in ${rulesPath}`);
+      } catch (error) {
+        console.error("Could not secure the Snort rule-manager socket:", error);
+        server.close(() => {
+          process.exitCode = 1;
+        });
+      }
+    });
+  } else {
+    server.listen(port, host, () => {
+      console.info(`Snort rule manager listening on http://${host}:${port}`);
+      console.info(`Managing alert rules in ${rulesPath}`);
+    });
+  }
 
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, () => {
+      if (sensorSupervisor) void sensorSupervisor.stop();
       server.close((error) => {
         if (error) {
           console.error("Could not close the Snort rule manager:", error);

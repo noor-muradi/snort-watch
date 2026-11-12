@@ -3,6 +3,7 @@ import { open, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { proxyRulesApi } from "./rules-api-proxy.mjs";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dataPath = path.resolve(
@@ -11,6 +12,7 @@ const dataPath = path.resolve(
 const distPath = path.join(projectRoot, "dist");
 const port = Number(process.env.PORT ?? 3100);
 const host = process.env.HOST ?? "127.0.0.1";
+const rulesApiSocket = process.env.RULES_API_SOCKET;
 const maxBytes = 8 * 1024 * 1024;
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -131,6 +133,10 @@ async function serveStatic(response, pathname) {
 
 const server = createServer((request, response) => {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
+  if (url.pathname.startsWith("/rules-api/")) {
+    proxyRulesApi(request, response, url, rulesApiSocket);
+    return;
+  }
   if (request.method !== "GET") {
     sendJson(response, 405, { error: "Only GET requests are supported." });
     return;

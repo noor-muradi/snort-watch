@@ -1,12 +1,14 @@
 # Snort Watch
 
-A lightweight React dashboard for Snort IDS alerts. Snort stays on the Ubuntu host; a small Node bridge converts Snort 2 fast-alert lines to NDJSON, and the dashboard displays those records.
+A lightweight containerized Snort 2 IDS stack with a React console for alerts and rule management. A small Node bridge converts Snort fast-alert lines to NDJSON.
 
 ## Development disclosure
 
 This project was developed with assistance from AI tools. The project maintainer reviews and is responsible for the code, documentation, and release decisions.
 
 > **Snort 2 vs Snort 3:** This project targets Snort 2.x (tested with Snort 2.9.20). The Snort 2 package used here does not provide Snort 3's native JSON logger, so the bridge converts the existing `alert_fast` output. For Snort 3, use its native `alert_json` logger instead.
+
+The containerized Compose deployment in section 4 is the recommended setup. Sections 1–3 describe installing Snort on the host and running the app locally instead.
 
 ## 1. Install Snort on Ubuntu
 
@@ -133,71 +135,33 @@ SNORT_JSON_LOG=/path/to/alerts.jsonl npm run api
 
 The account running the bridge must be able to read Snort's fast-alert file. Do not make IDS logs world-readable.
 
-## 4. Run the dashboard and bridge with Docker Compose
+## 4. Run the full stack with Docker Compose
 
-Docker Engine and the Docker Compose plugin are required. Snort itself remains a host service; Compose mounts its log directory **read-only** into the bridge container. The dashboard is published only on localhost.
-
-Check Docker and the host `adm` group ID:
+Docker Engine and the Compose plugin are required. This deployment targets Linux because the Snort sensor uses host networking to capture on a host interface. Configure the interface and protected network before starting:
 
 ```bash
-docker --version
-docker compose version
-getent group adm
-```
-
-Build and start both containers. Set the actual host group ID from `getent group adm` so the non-root bridge can read Snort's `0640 snort:adm` alert log:
-
-```bash
-export SNORT_LOG_GID="$(getent group adm | cut -d: -f3)"
+cp .env.example .env
+# Edit .env: set SNORT_INTERFACE and SNORT_HOME_NET for this host.
+docker compose config --quiet
 docker compose up --build -d
 docker compose ps
 docker compose logs --tail=50
 ```
 
-Open **http://127.0.0.1:3100**. Check API health and recent alerts with:
+The sensor image uses Ubuntu 24.04's Snort 2.9.20 package and the official Node.js 24 image runtime. Stop any host Snort service first to avoid two Snort processes capturing on the same interface. The sensor drops all capabilities except `NET_RAW` and `NET_ADMIN`, and does not use systemd or privileged mode. Host networking does not provide visibility into traffic switched between other devices; use a mirror/TAP for that.
+
+The **console** is available at **http://127.0.0.1:3100**. Check API health and alerts with:
 
 ```bash
 curl http://127.0.0.1:3100/api/health
 curl 'http://127.0.0.1:3100/api/alerts?limit=20'
 ```
 
-To use a different host log directory, set `SNORT_LOG_DIR` before starting Compose; that directory is mounted read-only at `/snort-logs` and must contain `snort.alert.fast`:
-
-```bash
-export SNORT_LOG_DIR=/path/to/snort/logs
-docker compose up --build -d
-```
-
-Compose stores converted alerts in the named `alerts-data` volume shared between the bridge and dashboard. The container runs as the unprivileged `node` user, drops Linux capabilities, and exposes the UI/API on `127.0.0.1` only. To stop the containers while retaining alert history:
-
-```bash
-docker compose down
-```
-
-To also delete the stored alert history, explicitly remove the volume:
-
-```bash
-docker compose down --volumes
-```
+Snort logs, managed rules, and normalized alerts use separate Compose volumes. The rule manager communicates with the console over a private Unix socket volume; it has no published control port. To stop services while retaining data, run `docker compose down`. To remove alert history and managed rules as well, run `docker compose down --volumes`.
 
 ## 5. Manage custom rules from the UI
 
-The **Rules** tab shows saved and draft custom rules in a collapsible list that is hidden by default. The guided rule-creation panel is also collapsed by default; expand **Create an alert rule** when you want to build a new signature. Its **Snort alert signatures** editor is available as an option at the bottom of the expanded creator. The Community Rules management panel is below the guided creator and collapsed by default as well. Hover over the `!` information mark to see how validation and Snort restarts work. The tab edits only `/var/lib/snort-watch/ui-managed.rules`; it does not replace `/etc/snort/rules/local.rules`. Only custom `alert` signatures are accepted. Each update is syntax-checked against the full Snort config before it is applied. On validation failure, the previous contents are restored. On success, the host Snort service is restarted to load the new rules.
-
-Install the host-side rule manager once (Node.js 20+ must be installed on Ubuntu). If Node.js was installed with `nvm`, pass the current shell's executable path through `sudo`; the installer copies that Node binary into `/opt/snort-watch` for systemd:
-
-```bash
-sudo env PATH="$PATH" sh scripts/install-rules-manager.sh
-```
-
-The installer creates a restricted `snort-rules` account, adds separate includes for custom rules and community rules to Snort's `local.rules`, and runs the rule manager as a host systemd service bound to `127.0.0.1:3101`. It grants that account only two passwordless root commands: testing the Snort configuration and restarting the `snort` service. The UI container is not given access to Snort's configuration, systemd, or host privileges.
-
-Rebuild/restart the UI after pulling an update:
-
-```bash
-export SNORT_LOG_GID="$(getent group adm | cut -d: -f3)"
-docker compose up --build -d
-```
+The **Rules** tab shows saved custom rules in a collapsible list. The guided creator and Community Rules panel are also collapsed by default. The sensor-side manager validates against the full Snort config and restarts the supervised Snort process after successful changes; failed validation restores the previous rule files. The manager is not exposed on a network port. Its Unix socket is shared only with the console container.
 
 Open **http://127.0.0.1:3100**, select **Rules**, and use **Create an alert rule** to choose a traffic type, networks, ports, direction, alert description, and severity. The UI previews a generated rule and assigns a SID automatically. Select the single **Save** button to validate and load it immediately; the creator shows green success feedback or red failure feedback. Guided rule creation does not create a draft. Advanced users can open the raw rule editor at the bottom of the creator panel.
 
@@ -205,7 +169,7 @@ Generated and saved custom rules appear in a readable list. Removing a rule mark
 
 ### Official GPLv2 Community Rules
 
-The Community Rules panel downloads the official Snort Community Rules archive from `snort.org`. It extracts only `community-rules/community.rules`, its GPLv2 license, and the AUTHORS credits; VRT Certified Rules and the archive's `snort.conf` are never installed. The rules remain in a separate managed file, `/var/lib/snort-watch/community-active.rules`, with the downloaded copy, license, and author credits retained separately. The installer adds a stable include for the active file.
+The Community Rules panel downloads the official Snort Community Rules archive from `snort.org`. It extracts only `community-rules/community.rules`, its GPLv2 license, and the AUTHORS credits; VRT Certified Rules and the archive's `snort.conf` are never installed. The rules remain in a separate managed file, `/var/lib/snort-watch/community-active.rules`, with the downloaded copy, license, and author credits retained separately.
 
 Use **Install & enable** to download, validate, and apply the rules. **Update rules** fetches the latest archive and preserves whether rules are enabled or disabled. You can disable the active rules while retaining the download, re-enable them later, or remove the downloaded copy. Every operation validates Snort's full configuration before restarting the service; failed validation restores the previous files. The archive is fetched over HTTPS only from the official Snort endpoint and its expected Snort-hosted redirect, with redirect, archive-size, path, license, and rule-content checks.
 
@@ -217,7 +181,7 @@ The equivalent manual syntax for a high-priority ICMP echo rule is:
 alert icmp any any -> $HOME_NET any (msg:"Ping to home network"; itype:8; priority:2; sid:9000000; rev:1;)
 ```
 
-The rule-manager API is loopback-only and accepts browser mutations only from the local dashboard/development origins. Keep the UI local: do not expose ports `3100` or `3101` to untrusted networks or reverse-proxy them without adding authentication and an explicit authorization model. To inspect manager health/logs:
+The containerized rule manager is reachable only through a private Unix socket shared with the console. Keep the console local: do not expose port `3100` to untrusted networks or reverse-proxy it without adding authentication and an explicit authorization model. For the optional host-installed manager, inspect its service with:
 
 ```bash
 systemctl status snort-rules-manager --no-pager
@@ -230,7 +194,7 @@ Snort Watch source code and documentation are licensed under the [MIT License](.
 
 ## Dashboard behavior
 
-- The dashboard refreshes every five seconds and supports filtering by severity and searching messages, signatures, IPs, ports, and protocols.
+- The console refreshes every five seconds and supports filtering by severity and searching messages, signatures, IPs, ports, and protocols.
 - The alert table shows 10 rows per page by default, with numbered pagination and a rows-per-page selector (10, 25, 50, or 100). The selected Alerts/Rules tab is retained when the page is reloaded in the same browser tab.
 - The Rules tab can edit, validate, and apply custom Snort alert rules when the local host rule-manager service is installed.
 - Priority 1/2/3 maps to Critical/High/Medium; priority 4 or above maps to Low. Alerts without priority are shown as “No priority.”

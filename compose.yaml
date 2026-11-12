@@ -1,4 +1,30 @@
 services:
+  sensor:
+    build:
+      context: .
+      dockerfile: snort.Dockerfile
+    image: snort-watch-sensor:local
+    network_mode: host
+    environment:
+      SNORT_INTERFACE: ${SNORT_INTERFACE:?Set SNORT_INTERFACE in .env}
+      SNORT_HOME_NET: ${SNORT_HOME_NET:?Set SNORT_HOME_NET in .env}
+    volumes:
+      - snort-logs:/var/log/snort
+      - snort-rules:/var/lib/snort-watch
+      - sensor-run:/run/snort-watch
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    init: true
+    restart: unless-stopped
+
   bridge:
     build:
       context: .
@@ -8,33 +34,36 @@ services:
       SNORT_FAST_LOG: /snort-logs/snort.alert.fast
       SNORT_JSON_LOG: /data/alerts.jsonl
     volumes:
-      - type: bind
-        source: ${SNORT_LOG_DIR:-/var/log/snort}
-        target: /snort-logs
-        read_only: true
+      - snort-logs:/snort-logs:ro
       - alerts-data:/data
-    group_add:
-      - "${SNORT_LOG_GID:-4}"
     read_only: true
     cap_drop:
       - ALL
+    depends_on:
+      sensor:
+        condition: service_started
     restart: unless-stopped
 
-  dashboard:
+  console:
+    build:
+      context: .
     image: snort-watch:local
     environment:
       HOST: 0.0.0.0
       PORT: 3100
       SNORT_JSON_LOG: /data/alerts.jsonl
+      RULES_API_SOCKET: /run/snort-watch/rules-manager.sock
     ports:
       - "127.0.0.1:3100:3100"
     volumes:
       - alerts-data:/data:ro
+      - sensor-run:/run/snort-watch
     read_only: true
     cap_drop:
       - ALL
     depends_on:
       - bridge
+      - sensor
     healthcheck:
       test:
         - CMD
@@ -49,3 +78,6 @@ services:
 
 volumes:
   alerts-data:
+  snort-logs:
+  snort-rules:
+  sensor-run:

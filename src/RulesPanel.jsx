@@ -2,12 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { buildAlertRule } from "./rule-builder.js";
 import { parseRuleSummaries } from "./rule-list.js";
 
-const RULES_API_URL = import.meta.env.DEV
-  ? "/rules-api/api/rules"
-  : "http://127.0.0.1:3101/api/rules";
-const COMMUNITY_API_URL = import.meta.env.DEV
-  ? "/rules-api/api/community-rules"
-  : "http://127.0.0.1:3101/api/community-rules";
+const RULES_API_URL = "/rules-api/api/rules";
+const COMMUNITY_API_URL = "/rules-api/api/community-rules";
 
 async function readResponse(response) {
   const payload = await response.json();
