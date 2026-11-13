@@ -11,12 +11,13 @@
 - [x] Rename the Compose UI service from `dashboard` to `console`.
 - [x] Build the Snort sensor, bridge, and console images and validate Snort's configuration.
 - [x] Validate Compose startup, console APIs, private rules API, Snort startup, and sensor log access.
-- [ ] Verify an actual Snort alert is normalized by the bridge and displayed in the console.
-- [ ] Verify rule validation, rollback, and supervised Snort restarts.
-- [ ] Test packet capture, rule validation/rollback, persistence, restarts, and least privilege.
+- [x] Verify an actual Snort alert is normalized by the bridge and displayed in the console.
+- [x] Run automated coverage for rule validation, alert conversion, supervisor lifecycle, and retention.
+- [ ] Complete live packet-capture, rule rollback, persistence, and least-privilege checks.
 - [x] Document the Compose setup and required sensor configuration.
 - [ ] Verify the complete stack from a clean deployment.
-- [ ] Define alert/log retention, comparing container environment configuration with a UI setting; prefer a safe, documented default.
+- [x] Choose deployment environment configuration for retention; implement 30-day alert retention and daily/size-based Snort log rotation with 7-day archive retention.
+- [ ] Validate alert/log retention against a running Compose stack.
 - [ ] Remove the alert-count cap from API/UI retrieval so the UI can query the full alert history.
 - [ ] Add a date-range filter for alerts in the UI.
 
@@ -31,6 +32,6 @@
 
 ## Current implementation
 
-Compose defines a Linux host-networked `sensor`, a `bridge`, and a local-only `console`. Image builds, Compose configuration, Snort config validation, app tests, UI build, and API probes pass. Actual alert forwarding, rule changes/rollback, and capture validation remain.
+Compose defines a Linux host-networked `sensor`, a `bridge`, and a local-only `console`. Alert and raw Snort log retention are configurable through `.env`; defaults keep normalized alerts for 30 days and rotate raw logs daily or at 100 MiB, retaining archives for 7 days. Automated retention tests pass; live retention behavior still needs Compose validation. Rule rollback and packet-capture validation remain.
 
 See [README.md](./README.md) for setup instructions and [CHANGELOG.md](./CHANGELOG.md) for progress.

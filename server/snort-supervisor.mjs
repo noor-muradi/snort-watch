@@ -58,9 +58,14 @@ export class SnortSupervisor {
   }
 
   async restart() {
+    return this.restartWith();
+  }
+
+  async restartWith(beforeStart = async () => {}) {
     this.restarting = true;
     try {
       await this.stopChild();
+      await beforeStart();
       return await this.start();
     } finally {
       this.restarting = false;

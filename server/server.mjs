@@ -24,17 +24,17 @@ const mimeTypes = {
 };
 
 async function readRecentLines(filePath, maxLines) {
-  const fileStat = await stat(filePath);
-  if (!fileStat.isFile()) {
-    throw new Error("The configured Snort JSON path is not a file.");
-  }
-
-  const start = Math.max(0, fileStat.size - maxBytes);
   const handle = await open(filePath, "r");
   try {
+    const fileStat = await handle.stat();
+    if (!fileStat.isFile()) {
+      throw new Error("The configured Snort JSON path is not a file.");
+    }
+
+    const start = Math.max(0, fileStat.size - maxBytes);
     const buffer = Buffer.alloc(fileStat.size - start);
-    await handle.read(buffer, 0, buffer.length, start);
-    const text = buffer.toString("utf8");
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, start);
+    const text = buffer.subarray(0, bytesRead).toString("utf8");
     const lines = text.split(/\r?\n/);
     if (start > 0) {
       lines.shift();

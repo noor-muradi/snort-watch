@@ -158,8 +158,7 @@ function App() {
     <main className="shell">
       <header className="topbar">
         <a className="brand" href="/" aria-label="Snort Watch home">
-          <span className="brand-mark">S</span>
-          <span>SNORT<span className="brand-light">WATCH</span></span>
+          <img className="brand-logo" src="/snort-watch-logo.svg" alt="" />
         </a>
         <nav className="top-nav" aria-label="Dashboard sections">
           <button
