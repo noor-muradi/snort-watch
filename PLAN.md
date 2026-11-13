@@ -9,12 +9,13 @@
 - [x] Choose Linux host networking with explicit interface and protected-network settings.
 - [x] Choose persistent log/rule volumes and a private Unix socket for rule management.
 - [x] Rename the Compose UI service from `dashboard` to `console`.
-- [x] Build the Snort sensor, bridge, and console images; validate Snort's configuration without starting capture.
+- [x] Build the Snort sensor, bridge, and console images and validate Snort's configuration.
 - [x] Validate Compose startup, console APIs, private rules API, Snort startup, and sensor log access.
 - [ ] Verify an actual Snort alert is normalized by the bridge and displayed in the console.
 - [ ] Verify rule validation, rollback, and supervised Snort restarts.
 - [ ] Test packet capture, rule validation/rollback, persistence, restarts, and least privilege.
-- [ ] Verify a clean Compose deployment and finish setup documentation.
+- [x] Document the Compose setup and required sensor configuration.
+- [ ] Verify the complete stack from a clean deployment.
 - [ ] Define alert/log retention, comparing container environment configuration with a UI setting; prefer a safe, documented default.
 - [ ] Remove the alert-count cap from API/UI retrieval so the UI can query the full alert history.
 - [ ] Add a date-range filter for alerts in the UI.

@@ -1,13 +1,12 @@
 # Changelog
 
-## Unreleased — `feature/containerized-snort`
+## v0.1.0 — 2026-11-13
 
-- Added the Ubuntu 24.04 Snort 2.9.20 sensor image and Node.js 24 runtime.
-- Added Compose `sensor`, `bridge`, and `console` services with separate persistent volumes and least-privilege capabilities.
-- Added sensor-side Snort supervision and a private Unix-socket rule-manager API proxy.
-- Set sensor log-volume permissions for bridge access and retained least-privilege container settings.
-- Added supervisor and Unix-socket proxy tests, and documented the Compose deployment.
-- Verified tests, production build, Compose configuration, Node.js 24 images, and Snort 2.9.20 configuration.
+- Added a containerized Snort 2.9.20 sensor using Ubuntu 24.04 and Node.js 24.
+- Added Compose `sensor`, `bridge`, and `console` services with persistent volumes and least-privilege capabilities.
+- Added supervised Snort lifecycle management and a private Unix-socket rules API proxy.
+- Added focused supervisor/proxy tests and documented the Compose deployment.
+- Verified the test suite, production build, Compose configuration, Node.js 24 images, and Snort configuration.
 
 ## v0.0.1
 
