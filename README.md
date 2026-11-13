@@ -8,7 +8,7 @@ This project was developed with assistance from AI tools. The project maintainer
 
 ## Run with Docker Compose
 
-The recommended deployment runs Snort, the alert bridge, and the console as containers. **You do not need to install Snort on the Ubuntu host.** Docker Engine and the Docker Compose plugin are required. The sensor uses Linux host networking to capture on a host interface.
+The recommended deployment runs Snort, the alert bridge, and the console as containers. **You do not need to install Snort directly on the host.** Docker Engine and the Docker Compose plugin are required. The sensor uses Linux host networking to capture on a host interface.
 
 1. Copy the sample configuration and edit it for the host:
 
