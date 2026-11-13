@@ -7,6 +7,7 @@
 - Added supervised Snort lifecycle management and a private Unix-socket rules API proxy.
 - Added focused supervisor/proxy tests and documented the Compose deployment.
 - Verified the test suite, production build, Compose configuration, Node.js 24 images, and Snort configuration.
+- Clarified that the recommended Compose setup packages Snort and does not require installing it on the Ubuntu host.
 
 ## v0.0.1
 
