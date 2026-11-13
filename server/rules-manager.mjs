@@ -14,6 +14,8 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { parsePositiveMegabytes, SnortLogRetention } from "./snort-log-retention.mjs";
+import { parseRetentionDays } from "./alert-retention.mjs";
 import { SnortSupervisor } from "./snort-supervisor.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -30,6 +32,17 @@ const containerController = process.env.SNORT_CONTROLLER_MODE === "container";
 const snortInterface = process.env.SNORT_INTERFACE;
 const snortHomeNet = process.env.SNORT_HOME_NET;
 const snortLogDirectory = process.env.SNORT_LOG_DIR ?? "/var/log/snort";
+const snortLogRetentionDays = parseRetentionDays(
+  process.env.SNORT_LOG_RETENTION_DAYS,
+  "SNORT_LOG_RETENTION_DAYS",
+  7,
+);
+const snortLogRotateSizeBytes =
+  parsePositiveMegabytes(
+    process.env.SNORT_LOG_ROTATE_SIZE_MB,
+    "SNORT_LOG_ROTATE_SIZE_MB",
+    100,
+  ) * 1024 * 1024;
 const rulesApiSocket = process.env.RULES_API_SOCKET;
 const managedDirectory = path.dirname(rulesPath);
 const communityActivePath = path.resolve(
@@ -482,6 +495,8 @@ async function validateSnortConfig() {
 }
 
 let sensorSupervisor = null;
+let snortLogRetention = null;
+let snortLogRetentionTimer = null;
 
 async function restartSnort() {
   if (!containerController) {
@@ -865,6 +880,27 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       },
     });
     await sensorSupervisor.start();
+
+    snortLogRetention = new SnortLogRetention({
+      directory: snortLogDirectory,
+      supervisor: sensorSupervisor,
+      retentionDays: snortLogRetentionDays,
+      rotateSizeBytes: snortLogRotateSizeBytes,
+    });
+    await snortLogRetention.run();
+    snortLogRetentionTimer = setInterval(() => {
+      void snortLogRetention.run().then((result) => {
+        if (result.rotated) {
+          console.info("Rotated Snort logs and restarted the sensor.");
+        }
+        if (result.removed > 0) {
+          console.info(`Removed ${result.removed} expired Snort log archives.`);
+        }
+      }).catch((error) => {
+        console.error("Could not apply Snort log retention:", error);
+      });
+    }, 60 * 1000);
+    snortLogRetentionTimer.unref();
   }
 
   if (rulesApiSocket) {
@@ -893,13 +929,25 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, () => {
-      if (sensorSupervisor) void sensorSupervisor.stop();
-      server.close((error) => {
-        if (error) {
-          console.error("Could not close the Snort rule manager:", error);
-          process.exitCode = 1;
+      if (snortLogRetentionTimer) clearInterval(snortLogRetentionTimer);
+      void (async () => {
+        try {
+          await snortLogRetention?.stop();
+        } catch (error) {
+          console.error("Could not stop Snort log retention:", error);
         }
-      });
+        try {
+          await sensorSupervisor?.stop();
+        } catch (error) {
+          console.error("Could not stop Snort:", error);
+        }
+        server.close((error) => {
+          if (error) {
+            console.error("Could not close the Snort rule manager:", error);
+            process.exitCode = 1;
+          }
+        });
+      })();
     });
   }
 }

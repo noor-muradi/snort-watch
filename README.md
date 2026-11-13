@@ -1,4 +1,6 @@
-# Snort Watch
+<p align="left">
+  <img src="./public/snort-watch-logo.svg" alt="Snort Watch" width="237" height="60" />
+</p>
 
 A lightweight Snort 2 IDS stack with a React console for alerts and rule management. A Node.js bridge converts Snort fast-alert lines to NDJSON.
 
@@ -42,7 +44,13 @@ Host networking lets the sensor capture on the selected host interface, but does
 
 The sensor writes fast alerts to a shared `snort-logs` volume. The bridge reads them, converts recognized entries to JSONL, and appends them to `alerts-data`; the console reads that data read-only. Managed Snort rules are stored separately in `snort-rules`.
 
-Alert history persists in the `alerts-data` volume and currently has no automatic time- or size-based retention. Restarting containers does not clear it. To stop the stack while keeping data:
+Retention is configured through the deployment environment, rather than the UI, so operators can manage storage policy with the rest of the Compose configuration:
+
+- `ALERT_RETENTION_DAYS` controls normalized JSONL alert history; it defaults to 30 days.
+- `SNORT_LOG_RETENTION_DAYS` controls how long rotated raw Snort log files are kept; it defaults to 7 days.
+- `SNORT_LOG_ROTATE_SIZE_MB` rotates active Snort logs when any file reaches the configured size; it defaults to 100 MiB. Logs also rotate daily. Rotation briefly restarts Snort.
+
+Copy `.env.example` to `.env` and adjust these values for the deployment. Alert history and log files persist in their volumes across container restarts; expiry and rotation are handled by the bridge and sensor-side manager. To stop the stack while keeping data:
 
 ```bash
 docker compose down

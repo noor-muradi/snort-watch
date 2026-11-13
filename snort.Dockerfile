@@ -35,7 +35,7 @@ RUN apt-get update \
       > /var/lib/snort-watch/community-active.rules
 
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
-COPY server/rules-manager.mjs server/snort-supervisor.mjs /opt/snort-watch/server/
+COPY server/alert-retention.mjs server/rules-manager.mjs server/snort-log-retention.mjs server/snort-supervisor.mjs /opt/snort-watch/server/
 
 RUN node --version \
     && snort -V

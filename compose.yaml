@@ -8,6 +8,8 @@ services:
     environment:
       SNORT_INTERFACE: ${SNORT_INTERFACE:?Set SNORT_INTERFACE in .env}
       SNORT_HOME_NET: ${SNORT_HOME_NET:?Set SNORT_HOME_NET in .env}
+      SNORT_LOG_RETENTION_DAYS: ${SNORT_LOG_RETENTION_DAYS:-7}
+      SNORT_LOG_ROTATE_SIZE_MB: ${SNORT_LOG_ROTATE_SIZE_MB:-100}
     volumes:
       - snort-logs:/var/log/snort
       - snort-rules:/var/lib/snort-watch
@@ -33,6 +35,7 @@ services:
     environment:
       SNORT_FAST_LOG: /snort-logs/snort.alert.fast
       SNORT_JSON_LOG: /data/alerts.jsonl
+      ALERT_RETENTION_DAYS: ${ALERT_RETENTION_DAYS:-30}
     volumes:
       - snort-logs:/snort-logs:ro
       - alerts-data:/data
