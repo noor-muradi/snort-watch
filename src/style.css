@@ -201,11 +201,17 @@ h2 span { display: inline-grid; min-width: 23px; height: 21px; place-items: cent
 .search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--bright); font-size: 11px; }
 .search input::placeholder { color: #637181; }
 kbd { padding: 1px 5px; border: 1px solid #33404d; border-radius: 3px; color: #718091; font: 10px "DM Mono", monospace; }
-.filter-row { display: flex; align-items: center; justify-content: space-between; padding: 0 22px 15px; }
+.filter-row { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 10px 16px; padding: 0 22px 15px; }
 .filter-tabs { display: flex; gap: 4px; }
 .filter-tabs button { padding: 6px 10px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: #8391a0; cursor: pointer; font-size: 10px; }
 .filter-tabs button:hover { color: #d7dfe7; }
 .filter-tabs button.active { border-color: #33434e; background: #1a2731; color: #a5e3c8; }
+.date-filter { display: flex; align-items: flex-end; gap: 8px; }
+.date-filter label { display: flex; align-items: center; gap: 6px; color: #8290a1; font-size: 10px; }
+.date-filter input { min-width: 118px; padding: 5px 7px; border: 1px solid #2a3947; border-radius: 4px; background: #101923; color: #c3cdd6; color-scheme: dark; font-size: 10px; }
+.date-filter button { padding: 5px 7px; border: 1px solid #2a3947; border-radius: 4px; background: #101923; color: #9eacba; cursor: pointer; font-size: 10px; white-space: nowrap; }
+.date-filter button:disabled { cursor: not-allowed; opacity: .45; }
+.date-error { margin: -5px 22px 12px; color: #ff858b; font-size: 11px; }
 .loaded-note { color: #627181; font: 10px "DM Mono", monospace; }
 .table-scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
@@ -245,6 +251,25 @@ tbody tr:hover { background: rgba(124, 157, 167, .045); }
 .feed-footer span:first-child { display: flex; align-items: center; gap: 7px; }
 .feed-footer .connection-dot { width: 6px; height: 6px; }
 .feed-footer span:last-child { overflow: hidden; max-width: 55%; text-overflow: ellipsis; white-space: nowrap; }
+.geo-panel { margin-top: 20px; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: rgba(17, 25, 35, .9); }
+.geo-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 22px 22px 16px; }
+.geo-heading .eyebrow { margin-bottom: 7px; }
+.geo-copy { margin: 8px 0 0; color: var(--muted); font-size: 11px; }
+.geo-heading-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 9px; }
+.map-theme-toggle { display: inline-flex; align-items: center; gap: 7px; padding: 6px 9px; border: 1px solid #33434e; border-radius: 5px; background: #18232d; color: #bdc9d3; cursor: pointer; font-size: 10px; white-space: nowrap; }
+.map-theme-toggle:hover { border-color: #577668; color: #d8eee3; }
+.map-theme-toggle:focus-visible { outline: 2px solid #70dcad; outline-offset: 2px; }
+.map-theme-toggle span { font-size: 13px; }
+.geo-count { padding: 6px 9px; border: 1px solid #2a3947; border-radius: 5px; color: #a5e3c8; font: 10px "DM Mono", monospace; white-space: nowrap; }
+.geo-map { z-index: 0; width: 100%; height: 420px; background: #0c0c0c; }
+.geo-map.light { background: #f2f1ed; }
+.geo-empty { display: grid; min-height: 100px; align-content: center; justify-items: center; gap: 6px; padding: 20px; text-align: center; }
+.geo-empty strong { color: #d0d9e2; font-size: 12px; font-weight: 500; }
+.geo-empty p, .geo-empty small { margin: 0; color: #8794a2; font-size: 11px; }
+.geo-note { margin: 10px 22px; color: #8794a2; font-size: 10px; }
+.geo-attribution { margin: 0; padding: 9px 14px; border-top: 1px solid rgba(130, 144, 161, .1); color: #687787; font-size: 9px; text-align: right; }
+.geo-panel .maplibregl-ctrl-group { overflow: hidden; border: 1px solid #8794a2; border-radius: 5px; }
+.geo-panel .maplibregl-ctrl-group button { background-color: #f0f4f8; }
 .page-footer { display: flex; justify-content: space-between; padding: 19px 2px 0; color: #596777; font: 9px "DM Mono", monospace; letter-spacing: .04em; }
 .page-footer b { padding: 0 5px; color: #3f8d72; }
 
@@ -266,9 +291,17 @@ tbody tr:hover { background: rgba(124, 157, 167, .045); }
   .summary-card { min-height: 106px; padding: 14px; }
   .feed-heading { align-items: stretch; flex-direction: column; gap: 15px; padding: 18px 15px; }
   .search { width: 100%; }
+  .geo-heading { flex-direction: column; gap: 12px; padding: 18px 15px 14px; }
+  .geo-heading-actions { justify-content: flex-start; }
+  .geo-map { height: 340px; }
+  .geo-note { margin-right: 15px; margin-left: 15px; }
   .filter-row { align-items: flex-start; flex-direction: column; gap: 9px; padding: 0 15px 13px; }
   .filter-tabs { width: 100%; overflow-x: auto; }
   .filter-tabs button { flex: 0 0 auto; }
+  .date-filter { width: 100%; flex-wrap: wrap; }
+  .date-filter label { justify-content: space-between; }
+  .date-filter input { min-width: 0; }
+  .date-error { margin-right: 15px; margin-left: 15px; }
   .pagination { flex-wrap: wrap; gap: 10px; padding: 12px 15px; }
   .page-range { order: 1; flex: 1 1 100%; }
   .page-tabs { margin-left: auto; }

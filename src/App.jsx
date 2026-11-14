@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import RulesPanel from "./RulesPanel.jsx";
+import GeoHeatmap from "./GeoHeatmap.jsx";
+import {
+  alertDate,
+  isWithinAlertDateRange,
+  localDateStart,
+} from "./alert-date.js";
 
 const REFRESH_MS = 5000;
 
@@ -24,16 +30,10 @@ function severityFor(alert) {
 function formatTime(value) {
   if (!value) return "—";
   const text = String(value);
-  const snortTime = text.match(
-    /^(\d{2})\/(\d{2})-(\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/,
-  );
-  const candidate = snortTime
-    ? `${new Date().getFullYear()}-${snortTime[1]}-${snortTime[2]}T${snortTime[3]}`
+  const date = alertDate({ timestamp: text });
+  return date
+    ? date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" })
     : text;
-  const date = new Date(candidate);
-  return Number.isNaN(date.getTime())
-    ? text
-    : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" });
 }
 
 function endpoint(alert, side) {
@@ -70,6 +70,8 @@ function App() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [severityFilter, setSeverityFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [lastUpdated, setLastUpdated] = useState(null);
   const [source, setSource] = useState("");
   const [activeView, setActiveView] = useState(() =>
@@ -83,7 +85,7 @@ function App() {
 
     async function refresh() {
       try {
-        const response = await fetch("/api/alerts?limit=1000");
+        const response = await fetch("/api/alerts");
         const payload = await response.json();
         if (!response.ok) {
           throw new Error(payload.error ?? `Request failed (${response.status})`);
@@ -117,9 +119,23 @@ function App() {
     window.sessionStorage.setItem("snort-watch-active-view", activeView);
   }, [activeView]);
 
+  const startDate = localDateStart(dateFrom);
+  const endDate = localDateStart(dateTo);
+  const invalidDateRange =
+    Boolean((dateFrom && !startDate) ||
+      (dateTo && !endDate) ||
+      (startDate && endDate && startDate > endDate));
+
+  const dateFilteredAlerts = useMemo(() => {
+    if (invalidDateRange) return [];
+    return alerts.filter((alert) =>
+      isWithinAlertDateRange(alert, startDate, endDate)
+    );
+  }, [alerts, dateFrom, dateTo, invalidDateRange]);
+
   const filteredAlerts = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return alerts.filter((alert) => {
+    return dateFilteredAlerts.filter((alert) => {
       const severity = severityFor(alert);
       if (severityFilter !== "all" && severity !== severityFilter) return false;
       if (!needle) return true;
@@ -136,16 +152,16 @@ function App() {
         .toLowerCase();
       return haystack.includes(needle);
     });
-  }, [alerts, query, severityFilter]);
+  }, [dateFilteredAlerts, query, severityFilter]);
 
   const summary = useMemo(() => {
     const counts = { critical: 0, high: 0, medium: 0, low: 0 };
-    for (const alert of alerts) {
+    for (const alert of dateFilteredAlerts) {
       const severity = severityFor(alert);
       if (severity in counts) counts[severity] += 1;
     }
     return counts;
-  }, [alerts]);
+  }, [dateFilteredAlerts]);
 
   const pageCount = Math.max(1, Math.ceil(filteredAlerts.length / pageSize));
   const displayedPage = Math.min(currentPage, pageCount);
@@ -276,8 +292,50 @@ function App() {
               </button>
             ))}
           </div>
-          <span className="loaded-note">Latest {alerts.length} events</span>
+          <div className="date-filter">
+            <label>
+              <span>From</span>
+              <input
+                type="date"
+                aria-label="Filter alerts from date"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={(event) => {
+                  setDateFrom(event.target.value);
+                  setCurrentPage(1);
+                }}
+              />
+            </label>
+            <label>
+              <span>To</span>
+              <input
+                type="date"
+                aria-label="Filter alerts to date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(event) => {
+                  setDateTo(event.target.value);
+                  setCurrentPage(1);
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                setDateFrom("");
+                setDateTo("");
+                setCurrentPage(1);
+              }}
+              disabled={!dateFrom && !dateTo}
+            >
+              Clear dates
+            </button>
+          </div>
+          <span className="loaded-note">Loaded {alerts.length.toLocaleString()} events</span>
         </div>
+        {invalidDateRange && (
+          <p className="date-error" role="alert">Choose a valid date range.</p>
+        )}
 
         <div className="table-scroll">
           <table>
@@ -333,7 +391,9 @@ function App() {
               <strong>{status === "error" ? "Waiting for the alert feed" : alerts.length ? "No matching alerts" : "No alerts yet"}</strong>
               <p>
                 {alerts.length
-                  ? "Try a different search or severity filter."
+                  ? invalidDateRange
+                    ? "The start date must be on or before the end date."
+                    : "Try a different search, severity, or date range."
                   : "New Snort detections will appear here as they are written to the JSON log."}
               </p>
             </div>
@@ -399,6 +459,7 @@ function App() {
           <span>{source ? `Source: ${source}` : "Source not configured"}</span>
         </footer>
       </section>
+      <GeoHeatmap />
       </>
       )}
       <footer className="page-footer">

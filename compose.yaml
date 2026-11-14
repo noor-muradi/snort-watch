@@ -56,10 +56,14 @@ services:
       PORT: 3100
       SNORT_JSON_LOG: /data/alerts.jsonl
       RULES_API_SOCKET: /run/snort-watch/rules-manager.sock
+      MAXMIND_ACCOUNT_ID: ${MAXMIND_ACCOUNT_ID:-}
+      MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY:-}
+      MAXMIND_DATABASE_PATH: /geoip/GeoLite2-City.mmdb
     ports:
       - "127.0.0.1:3100:3100"
     volumes:
       - alerts-data:/data:ro
+      - maxmind-data:/geoip
       - sensor-run:/run/snort-watch
     read_only: true
     cap_drop:
@@ -84,3 +88,4 @@ volumes:
   snort-logs:
   snort-rules:
   sensor-run:
+  maxmind-data:

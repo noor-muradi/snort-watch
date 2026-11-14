@@ -1,8 +1,10 @@
 import { createReadStream } from "node:fs";
-import { open, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readAlertRecords } from "./alerts-file.mjs";
+import { aggregateAlertLocations, createGeoIpService } from "./geoip.mjs";
 import { proxyRulesApi } from "./rules-api-proxy.mjs";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -13,7 +15,14 @@ const distPath = path.join(projectRoot, "dist");
 const port = Number(process.env.PORT ?? 3100);
 const host = process.env.HOST ?? "127.0.0.1";
 const rulesApiSocket = process.env.RULES_API_SOCKET;
-const maxBytes = 8 * 1024 * 1024;
+const geoIpService = createGeoIpService({
+  databasePath:
+    process.env.MAXMIND_DATABASE_PATH ??
+    path.join(projectRoot, "data", "GeoLite2-City.mmdb"),
+  accountId: process.env.MAXMIND_ACCOUNT_ID,
+  licenseKey: process.env.MAXMIND_LICENSE_KEY,
+});
+let geoAlertsCache = null;
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
@@ -23,31 +32,6 @@ const mimeTypes = {
   ".svg": "image/svg+xml",
 };
 
-async function readRecentLines(filePath, maxLines) {
-  const handle = await open(filePath, "r");
-  try {
-    const fileStat = await handle.stat();
-    if (!fileStat.isFile()) {
-      throw new Error("The configured Snort JSON path is not a file.");
-    }
-
-    const start = Math.max(0, fileStat.size - maxBytes);
-    const buffer = Buffer.alloc(fileStat.size - start);
-    const { bytesRead } = await handle.read(buffer, 0, buffer.length, start);
-    const text = buffer.subarray(0, bytesRead).toString("utf8");
-    const lines = text.split(/\r?\n/);
-    if (start > 0) {
-      lines.shift();
-    }
-    return {
-      lines: lines.filter((line) => line.trim()).slice(-maxLines),
-      truncated: start > 0,
-    };
-  } finally {
-    await handle.close();
-  }
-}
-
 function sendJson(response, status, payload) {
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
@@ -56,42 +40,55 @@ function sendJson(response, status, payload) {
   response.end(JSON.stringify(payload));
 }
 
-async function serveAlerts(response, url) {
-  const requestedLimit = Number(url.searchParams.get("limit") ?? 500);
-  const limit = Number.isInteger(requestedLimit)
-    ? Math.max(1, Math.min(requestedLimit, 2000))
-    : 500;
-
+async function serveAlerts(response) {
   try {
-    const { lines, truncated } = await readRecentLines(dataPath, limit);
-    const alerts = [];
-    let malformedLines = 0;
-
-    for (const line of lines) {
-      try {
-        const value = JSON.parse(line);
-        if (!value || typeof value !== "object" || Array.isArray(value)) {
-          malformedLines += 1;
-          continue;
-        }
-        alerts.push(value);
-      } catch {
-        malformedLines += 1;
-      }
-    }
-
+    const { alerts, malformedLines } = await readAlertRecords(dataPath);
     sendJson(response, 200, {
       alerts: alerts.reverse(),
       source: dataPath,
       loaded: alerts.length,
       malformedLines,
-      truncated,
+      truncated: false,
       updatedAt: new Date().toISOString(),
     });
   } catch (error) {
     sendJson(response, 503, {
       error: `Cannot read Snort JSON log at ${dataPath}: ${error.message}`,
       source: dataPath,
+    });
+  }
+}
+
+async function serveGeoAlerts(response) {
+  const { reader, state, lastUpdated, updateError } = geoIpService.getStatus();
+  if (!reader) {
+    sendJson(response, 503, {
+      error: updateError || "MaxMind GeoLite2 City database is unavailable.",
+      state,
+    });
+    return;
+  }
+
+  try {
+    const fileStat = await stat(dataPath);
+    const cacheKey = `${fileStat.mtimeMs}:${fileStat.size}:${geoIpService.getStatus().version}`;
+    if (!geoAlertsCache || geoAlertsCache.key !== cacheKey) {
+      const { alerts } = await readAlertRecords(dataPath);
+      geoAlertsCache = {
+        key: cacheKey,
+        ...aggregateAlertLocations(alerts, reader),
+        alertCount: alerts.length,
+      };
+    }
+    sendJson(response, 200, {
+      locations: geoAlertsCache.locations,
+      unmappedAddresses: geoAlertsCache.unmappedAddresses,
+      alertCount: geoAlertsCache.alertCount,
+      databaseUpdatedAt: lastUpdated,
+    });
+  } catch (error) {
+    sendJson(response, 503, {
+      error: `Cannot build IP geolocation summary: ${error.message}`,
     });
   }
 }
@@ -145,7 +142,9 @@ const server = createServer((request, response) => {
   if (url.pathname === "/api/health") {
     sendJson(response, 200, { status: "ok", source: dataPath });
   } else if (url.pathname === "/api/alerts") {
-    void serveAlerts(response, url);
+    void serveAlerts(response);
+  } else if (url.pathname === "/api/geo/alerts") {
+    void serveGeoAlerts(response);
   } else if (url.pathname.startsWith("/api/")) {
     sendJson(response, 404, { error: "API route not found." });
   } else {
@@ -156,4 +155,17 @@ const server = createServer((request, response) => {
 server.listen(port, host, () => {
   console.info(`Snort Watch API listening on http://${host}:${port}`);
   console.info(`Reading JSON alerts from ${dataPath}`);
+  void geoIpService.start().catch((error) =>
+    console.error(`MaxMind geolocation initialization failed: ${error.message}`),
+  );
+});
+
+process.on("SIGTERM", () => {
+  geoIpService.stop();
+  server.close(() => process.exit(0));
+});
+
+process.on("SIGINT", () => {
+  geoIpService.stop();
+  server.close(() => process.exit(0));
 });

@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.3.0 — 2026-11-14
+
+- Removed alert-count and file-size caps from API/UI alert retrieval.
+- Added inclusive date-range filtering to the alert list.
+- Fixed the production container build so the UI logo is included in the static assets.
+- Added startup-managed MaxMind GeoLite2 downloads and a public-IP alert-count heatmap below the alert list.
+- Switched the heatmap to a vector basemap with English-only labels where English names are available.
+- Added a persistent dark/light basemap toggle and fixed map initialization, resizing, and theme changes without requiring a page reload.
+- Added coverage for unbounded alert history, date filtering, MaxMind geolocation, and English map labels.
+- Added a future dashboard feature to the plan: pie charts for top source IPs, destination IPs, and ports.
+
 ## v0.2.0 — 2026-11-13
 
 - Added configurable 30-day retention for normalized alerts and daily/100 MiB rotation for Snort logs, with 7-day archive retention.

@@ -18,8 +18,11 @@
 - [ ] Verify the complete stack from a clean deployment.
 - [x] Choose deployment environment configuration for retention; implement 30-day alert retention and daily/size-based Snort log rotation with 7-day archive retention.
 - [ ] Validate alert/log retention against a running Compose stack.
-- [ ] Remove the alert-count cap from API/UI retrieval so the UI can query the full alert history.
-- [ ] Add a date-range filter for alerts in the UI.
+- [x] Remove alert-count and file-size caps from API/UI retrieval so the UI can query all retained alert history.
+- [x] Add inclusive start/end date filters for alerts in the UI.
+- [x] Automatically download/update a MaxMind GeoLite2 City database at console startup and show an English-labeled alert-count heatmap below the alerts panel; verified with valid credentials.
+- [x] Add a persistent dark/light basemap toggle and verify map loading, resizing, and theme switching without a manual page reload.
+- [ ] Add pie charts below the map for top source IPs, destination IPs, and ports.
 
 ## Constraints
 
@@ -32,6 +35,6 @@
 
 ## Current implementation
 
-Compose defines a Linux host-networked `sensor`, a `bridge`, and a local-only `console`. Alert and raw Snort log retention are configurable through `.env`; defaults keep normalized alerts for 30 days and rotate raw logs daily or at 100 MiB, retaining archives for 7 days. Automated retention tests pass; live retention behavior still needs Compose validation. Rule rollback and packet-capture validation remain.
+Compose defines a Linux host-networked `sensor`, a `bridge`, and a local-only `console`. Alert and raw Snort log retention are configurable through `.env`; defaults keep normalized alerts for 30 days and rotate raw logs daily or at 100 MiB, retaining archives for 7 days. The API returns all retained alert records and the console filters by an inclusive date range. Automated tests pass; live retention behavior still needs Compose validation. Rule rollback and packet-capture validation remain.
 
 See [README.md](./README.md) for setup instructions and [CHANGELOG.md](./CHANGELOG.md) for progress.
