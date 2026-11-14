@@ -35,7 +35,7 @@ Open the console at **http://127.0.0.1:3100**. Check service health and recent a
 
 ```bash
 curl http://127.0.0.1:3100/api/health
-curl 'http://127.0.0.1:3100/api/alerts?limit=20'
+curl http://127.0.0.1:3100/api/alerts
 ```
 
 Host networking lets the sensor capture on the selected host interface, but does not expose traffic switched between other devices. Monitoring that traffic requires a network TAP or switch mirror.
@@ -93,11 +93,14 @@ SNORT_FAST_LOG=/path/to/snort.alert.fast SNORT_JSON_LOG=/path/to/alerts.jsonl np
 ## Dashboard behavior
 
 - The console refreshes every five seconds and filters by severity. Search covers messages, signatures, IP addresses, ports, and protocols.
+- The API returns all records in the retained alert history. Use the **From** and **To** date fields to filter the listing; table pagination only controls how many matching rows are displayed at once.
 - The alert table shows 10 rows per page by default, with 10, 25, 50, or 100 rows per page.
 - Priority 1/2/3 maps to Critical/High/Medium; priority 4 or above maps to Low. Alerts without priority are shown as “No priority.”
-- The API returns at most the latest 2,000 records and scans no more than 8 MiB of the JSONL file per request.
 - The bridge follows file rotation and truncation and emits one JSON object per recognized fast-alert line.
 - Fast-alert conversion preserves the metadata available in that format; it cannot provide packet fields Snort did not log.
+- The alert page includes an English-labeled geographic heatmap of public source and destination IPs, weighted by the number of retained alerts involving each IP. Private, reserved, and unmapped IPs are excluded. Use the **Light map**/**Dark map** control to change the OpenFreeMap vector basemap; the selected style is remembered in the browser. The map shows English name fields only, so locations without an English name may have no label. Map viewing makes requests to the public tile service.
+
+The console downloads the MaxMind GeoLite2 City database automatically at startup and checks for updates every seven days. Create a [free MaxMind account](https://www.maxmind.com/en/geolite2/signup), generate a GeoLite2 license key, and set `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY` in `.env`; the database is stored in the persistent `maxmind-data` volume. The credentials are used only by the console for database downloads and must not be committed. Without valid credentials, the rest of the console remains available but the heatmap cannot load.
 
 The console shows no alerts until traffic matches an enabled Snort rule. If the feed is unexpectedly empty, check `docker compose ps`, the sensor and bridge logs, and the health and alerts endpoints above.
 
